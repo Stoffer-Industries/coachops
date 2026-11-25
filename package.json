@@ -14,6 +14,7 @@
     "test": "npm run test -w @coachops/shared && npm run test -w @coachops/agent",
     "dev:agent": "npm run dev -w @coachops/agent",
     "dev:dashboard": "npm run dev -w @coachops/dashboard",
+    "dev:dashboard:sprite": "COACHOPS_AGENT_URL=https://coachops-b6wno.sprites.app npm run dev -w @coachops/dashboard",
     "start:agent": "npm run start -w @coachops/agent",
     "review": "npm run review -w @coachops/agent",
     "ready": "npm run ready -w @coachops/agent",

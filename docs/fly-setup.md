@@ -75,11 +75,32 @@ Gateway calls from outside a Sprite will not authenticate; readiness still repor
 
 ## 5. Local dashboard
 
-The trainer UI stays local (Hacksgiving non-goal: no public dashboard hosting):
+The trainer UI stays local (Hacksgiving non-goal: no public dashboard hosting).
+
+### Drive the local agent
 
 ```bash
-npm run dev:agent      # :8080
-npm run dev:dashboard  # :5173 proxies /api → agent
+npm run start:agent      # :8080
+npm run dev:dashboard    # :5173 proxies /api → local agent
 ```
 
-Point `VITE_AGENT_URL` at the Sprite HTTPS URL only if you intentionally want the local UI to drive the remote agent (Sprite URL auth may require a token).
+### Drive the Sprite agent
+
+Sprite URLs are **token-auth by default** (browser hits get a login redirect). For a local dashboard against the Sprite:
+
+```bash
+# one-time: allow unauthenticated HTTP to the Sprite (synthetic demo data only)
+sprite login -o quinn-stoffer
+sprite use -o quinn-stoffer coachops
+sprite config update -o quinn-stoffer -s coachops --url-auth public
+
+# then (no local agent needed):
+npm run dev:dashboard:sprite
+# open http://localhost:5173
+```
+
+To keep URL private instead, leave `--url-auth sprite` and run:
+
+```bash
+SPRITES_TOKEN='org/.../...' COACHOPS_AGENT_URL=https://coachops-b6wno.sprites.app npm run dev:dashboard
+```
