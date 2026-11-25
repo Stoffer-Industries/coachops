@@ -10,8 +10,8 @@
     "dashboard"
   ],
   "scripts": {
-    "build": "npm run build -w @coachops/shared && npm run build -w @coachops/agent && npm run build -w @coachops/dashboard && npm run build:public",
-    "build:public": "rm -rf public && mkdir -p public && cp -r dashboard/dist/* public/",
+    "build": "npm run build -w @coachops/shared && npm run build -w @coachops/agent && npm run build:dashboard:production",
+    "build:dashboard:production": "VITE_AGENT_URL=https://coachops-b6wno.sprites.app npm run build -w @coachops/dashboard && rm -rf public && mkdir -p public && cp -r dashboard/dist/* public/",
     "test": "npm run test -w @coachops/shared && npm run test -w @coachops/agent",
     "dev:agent": "npm run dev -w @coachops/agent",
     "dev:dashboard": "npm run dev -w @coachops/dashboard",
