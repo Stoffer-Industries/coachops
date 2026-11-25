@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsx watch src/server.ts",
+    "dev": "COACHOPS_LOCAL_DEV=true tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "review": "tsx src/cli.ts review",
-    "ready": "tsx src/cli.ts ready",
-    "reset-demo": "tsx src/cli.ts reset-demo",
+    "review": "COACHOPS_LOCAL_DEV=true tsx src/cli.ts review",
+    "ready": "COACHOPS_LOCAL_DEV=true tsx src/cli.ts ready",
+    "reset-demo": "COACHOPS_LOCAL_DEV=true tsx src/cli.ts reset-demo",
     "test": "npm run build && node --test dist/**/*.test.js"
   },
   "dependencies": {

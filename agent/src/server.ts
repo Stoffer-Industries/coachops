@@ -21,6 +21,20 @@ const store = new FileStore(defaultStorePath());
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const IS_PRODUCTION = process.env.NODE_ENV === "production" || 
+                      process.env.CURSOR_APP_ID !== undefined ||
+                      process.env.VERCEL !== undefined;
+
+const IS_LOCAL_DEV = !IS_PRODUCTION && 
+                     (process.env.NODE_ENV === "development" || 
+                      process.env.COACHOPS_LOCAL_DEV === "true");
+
+if (IS_PRODUCTION && !process.env.CURSOR_APP_ID && !process.env.VERCEL) {
+  console.error("FATAL: Running in production mode without authentication configured.");
+  console.error("Set CURSOR_APP_ID (Cursor platform) or VERCEL (Vercel) to enable authentication.");
+  process.exit(1);
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
@@ -31,6 +45,12 @@ async function requireAuth(req: express.Request, res: express.Response): Promise
     res.status(401).json({ error: "unauthorized", reason: identity.reason });
     return false;
   }
+  
+  if (!IS_LOCAL_DEV && identity.simulated) {
+    res.status(401).json({ error: "unauthorized", reason: "simulated_identity_not_allowed" });
+    return false;
+  }
+  
   return true;
 }
 
