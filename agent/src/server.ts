@@ -1,5 +1,7 @@
 import cors from "cors";
 import express from "express";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 import {
   applyDecision,
   buildReadiness,
@@ -13,6 +15,9 @@ import {
 const VERSION = "0.1.0";
 const PORT = Number(process.env.PORT ?? process.env.COACHOPS_PORT ?? 8080);
 const store = new FileStore(defaultStorePath());
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 app.use(cors());
@@ -101,6 +106,13 @@ app.get("/audit", async (_req, res) => {
 app.post("/demo/reset", async (_req, res) => {
   await store.resetDemo();
   res.json({ ok: true, message: "Demo state cleared. Fixtures remain unchanged." });
+});
+
+const dashboardPath = join(__dirname, "../../dashboard/dist");
+app.use(express.static(dashboardPath));
+
+app.get("*", (_req, res) => {
+  res.sendFile(join(dashboardPath, "index.html"));
 });
 
 app.listen(PORT, "0.0.0.0", () => {
