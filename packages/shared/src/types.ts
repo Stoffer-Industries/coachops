@@ -106,6 +106,16 @@ export interface RecommendedAction {
   draftBody?: string;
 }
 
+/** Durable outbound marker — once status is "sent", later decisions must not clear or resend. */
+export interface OutboundResult {
+  status: "sent" | "failed";
+  at: string;
+  detail: string;
+  subject?: string;
+  body?: string;
+  idempotencyKey: string;
+}
+
 export interface ReviewException {
   id: string;
   clientId: string;
@@ -118,6 +128,8 @@ export interface ReviewException {
   evidence: EvidenceItem[];
   recommendedAction: RecommendedAction;
   safetyEscalation: boolean;
+  /** Survives subsequent approve/dismiss decisions; gates the send path permanently once sent. */
+  outboundResult?: OutboundResult;
   decision?: {
     kind: DecisionKind;
     finalSubject?: string;

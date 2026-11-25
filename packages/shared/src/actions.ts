@@ -17,14 +17,35 @@ export interface DecisionInput {
   body?: string;
 }
 
-function alreadyActed(ex: ReviewException): boolean {
-  const status = ex.decision?.deliveryStatus;
-  return (
-    status === "sent" ||
-    status === "held_for_human" ||
-    status === "skipped_duplicate" ||
-    status === "failed"
-  );
+function outboundAlreadySent(ex: ReviewException): boolean {
+  return ex.outboundResult?.status === "sent";
+}
+
+function buildAudit(
+  input: DecisionInput,
+  exception: ReviewException,
+  decidedAt: string,
+  deliveryStatus: DeliveryStatus,
+  deliveryDetail?: string,
+  finalContent?: { subject: string; body: string }
+): AuditRecord {
+  return {
+    id: `audit-${crypto.randomUUID()}`,
+    reviewId: input.reviewId,
+    exceptionId: input.exceptionId,
+    clientId: exception.clientId,
+    category: exception.category,
+    recommendationSummary: exception.recommendedAction.summary,
+    evidence: exception.evidence,
+    decisionKind:
+      exception.safetyEscalation && (input.kind === "approve" || input.kind === "edit")
+        ? "escalate_hold"
+        : input.kind,
+    finalContent,
+    decidedAt,
+    deliveryStatus,
+    deliveryDetail
+  };
 }
 
 export async function applyDecision(
@@ -36,9 +57,51 @@ export async function applyDecision(
   const existing = review.exceptions.find((e) => e.id === input.exceptionId);
   if (!existing) throw new Error(`Exception ${input.exceptionId} not found.`);
 
+  // Durable send gate — never reopen the send path once outbound succeeded.
+  if (outboundAlreadySent(existing) && (input.kind === "approve" || input.kind === "edit")) {
+    const decidedAt = new Date().toISOString();
+    const detail =
+      "Outbound already recorded for this recommendation; refusing duplicate send.";
+    const audit = buildAudit(
+      input,
+      existing,
+      decidedAt,
+      "skipped_duplicate",
+      detail,
+      existing.outboundResult?.subject && existing.outboundResult?.body
+        ? {
+            subject: existing.outboundResult.subject,
+            body: existing.outboundResult.body
+          }
+        : undefined
+    );
+    const { review: updatedReview, exception } = await store.updateExceptionWithAudit(
+      input.reviewId,
+      input.exceptionId,
+      (ex) => ({
+        ...ex,
+        // Preserve outboundResult unchanged.
+        decision: {
+          kind: input.kind,
+          finalSubject: ex.outboundResult?.subject ?? ex.decision?.finalSubject,
+          finalBody: ex.outboundResult?.body ?? ex.decision?.finalBody,
+          decidedAt,
+          // Keep deliveryStatus as sent so the durable success marker stays visible.
+          deliveryStatus: "sent",
+          deliveryDetail: `${ex.outboundResult?.detail ?? "Previously sent."} (${detail})`
+        }
+      }),
+      audit
+    );
+    return { review: updatedReview, exception, audit };
+  }
+
   if (existing.safetyEscalation && (input.kind === "approve" || input.kind === "edit")) {
     const decidedAt = new Date().toISOString();
-    const { review: updatedReview, exception } = await store.updateException(
+    const detail =
+      "Safety-escalated items cannot use the routine send path. Trainer must handle directly.";
+    const audit = buildAudit(input, existing, decidedAt, "held_for_human", detail);
+    const { review: updatedReview, exception } = await store.updateExceptionWithAudit(
       input.reviewId,
       input.exceptionId,
       (ex) => ({
@@ -47,100 +110,43 @@ export async function applyDecision(
           kind: "escalate_hold",
           decidedAt,
           deliveryStatus: "held_for_human",
-          deliveryDetail:
-            "Safety-escalated items cannot use the routine send path. Trainer must handle directly."
+          deliveryDetail: detail
         }
-      })
+      }),
+      audit
     );
-
-    const audit: AuditRecord = {
-      id: `audit-${crypto.randomUUID()}`,
-      reviewId: input.reviewId,
-      exceptionId: input.exceptionId,
-      clientId: exception.clientId,
-      category: exception.category,
-      recommendationSummary: exception.recommendedAction.summary,
-      evidence: exception.evidence,
-      decisionKind: "escalate_hold",
-      decidedAt,
-      deliveryStatus: "held_for_human",
-      deliveryDetail: exception.decision?.deliveryDetail
-    };
-    await store.appendAudit(audit);
     return { review: updatedReview, exception, audit };
   }
 
   if (input.kind === "dismiss") {
     const decidedAt = new Date().toISOString();
-    const { review: updatedReview, exception } = await store.updateException(
+    const alreadySent = outboundAlreadySent(existing);
+    const detail = alreadySent
+      ? "Trainer dismissed after outbound was already delivered; send path remains closed."
+      : "Trainer dismissed; no outbound action.";
+    const deliveryStatus: DeliveryStatus = alreadySent ? "sent" : "not_applicable";
+    const audit = buildAudit(input, existing, decidedAt, deliveryStatus, detail);
+    const { review: updatedReview, exception } = await store.updateExceptionWithAudit(
       input.reviewId,
       input.exceptionId,
       (ex) => ({
         ...ex,
+        // Never clear outboundResult on dismiss.
         decision: {
           kind: "dismiss",
+          finalSubject: ex.outboundResult?.subject ?? ex.decision?.finalSubject,
+          finalBody: ex.outboundResult?.body ?? ex.decision?.finalBody,
           decidedAt,
-          deliveryStatus: "not_applicable",
-          deliveryDetail: "Trainer dismissed; no outbound action."
+          deliveryStatus,
+          deliveryDetail: detail
         }
-      })
+      }),
+      audit
     );
-    const audit: AuditRecord = {
-      id: `audit-${crypto.randomUUID()}`,
-      reviewId: input.reviewId,
-      exceptionId: input.exceptionId,
-      clientId: exception.clientId,
-      category: exception.category,
-      recommendationSummary: exception.recommendedAction.summary,
-      evidence: exception.evidence,
-      decisionKind: "dismiss",
-      decidedAt,
-      deliveryStatus: "not_applicable",
-      deliveryDetail: exception.decision?.deliveryDetail
-    };
-    await store.appendAudit(audit);
     return { review: updatedReview, exception, audit };
   }
 
-  // approve or edit
-  if (alreadyActed(existing) && existing.decision?.deliveryStatus === "sent") {
-    const decidedAt = new Date().toISOString();
-    const { review: updatedReview, exception } = await store.updateException(
-      input.reviewId,
-      input.exceptionId,
-      (ex) => ({
-        ...ex,
-        decision: {
-          ...(ex.decision ?? {
-            kind: input.kind,
-            decidedAt,
-            deliveryStatus: "skipped_duplicate"
-          }),
-          kind: input.kind,
-          decidedAt,
-          deliveryStatus: "skipped_duplicate",
-          deliveryDetail:
-            "Outbound already recorded for this recommendation; refusing duplicate send."
-        }
-      })
-    );
-    const audit: AuditRecord = {
-      id: `audit-${crypto.randomUUID()}`,
-      reviewId: input.reviewId,
-      exceptionId: input.exceptionId,
-      clientId: exception.clientId,
-      category: exception.category,
-      recommendationSummary: exception.recommendedAction.summary,
-      evidence: exception.evidence,
-      decisionKind: input.kind,
-      decidedAt,
-      deliveryStatus: "skipped_duplicate",
-      deliveryDetail: exception.decision?.deliveryDetail
-    };
-    await store.appendAudit(audit);
-    return { review: updatedReview, exception, audit };
-  }
-
+  // approve or edit — first send attempt
   const subject =
     input.subject?.trim() ||
     existing.recommendedAction.draftSubject ||
@@ -164,41 +170,69 @@ export async function applyDecision(
     idempotencyKey
   });
 
-  const deliveryStatus: DeliveryStatus = send.status === "sent" || send.status === "simulated"
-    ? "sent"
-    : "failed";
+  const deliveryStatus: DeliveryStatus =
+    send.status === "sent" || send.status === "simulated" ? "sent" : "failed";
 
   const decidedAt = new Date().toISOString();
-  const { review: updatedReview, exception } = await store.updateException(
-    input.reviewId,
-    input.exceptionId,
-    (ex) => ({
-      ...ex,
-      decision: {
-        kind: input.kind,
-        finalSubject: subject,
-        finalBody: body,
-        decidedAt,
-        deliveryStatus,
-        deliveryDetail: send.detail
-      }
-    })
-  );
-
-  const audit: AuditRecord = {
-    id: `audit-${crypto.randomUUID()}`,
-    reviewId: input.reviewId,
-    exceptionId: input.exceptionId,
-    clientId: exception.clientId,
-    category: exception.category,
-    recommendationSummary: exception.recommendedAction.summary,
-    evidence: exception.evidence,
-    decisionKind: input.kind,
-    finalContent: { subject, body },
+  const audit = buildAudit(
+    input,
+    existing,
     decidedAt,
     deliveryStatus,
-    deliveryDetail: send.detail
-  };
-  await store.appendAudit(audit);
+    send.detail,
+    { subject, body }
+  );
+
+  const { review: updatedReview, exception } = await store.updateExceptionWithAudit(
+    input.reviewId,
+    input.exceptionId,
+    (ex) => {
+      // Re-check durable marker inside the lock in case another request won the race.
+      if (ex.outboundResult?.status === "sent") {
+        return {
+          ...ex,
+          decision: {
+            kind: input.kind,
+            finalSubject: ex.outboundResult.subject,
+            finalBody: ex.outboundResult.body,
+            decidedAt,
+            deliveryStatus: "sent",
+            deliveryDetail: `${ex.outboundResult.detail} (duplicate send refused under lock)`
+          }
+        };
+      }
+      return {
+        ...ex,
+        outboundResult:
+          deliveryStatus === "sent"
+            ? {
+                status: "sent",
+                at: decidedAt,
+                detail: send.detail,
+                subject,
+                body,
+                idempotencyKey
+              }
+            : {
+                status: "failed",
+                at: decidedAt,
+                detail: send.detail,
+                subject,
+                body,
+                idempotencyKey
+              },
+        decision: {
+          kind: input.kind,
+          finalSubject: subject,
+          finalBody: body,
+          decidedAt,
+          deliveryStatus,
+          deliveryDetail: send.detail
+        }
+      };
+    },
+    audit
+  );
+
   return { review: updatedReview, exception, audit };
 }
