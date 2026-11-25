@@ -9,6 +9,7 @@ dist/
 dashboard/dist/
 agent/dist/
 packages/shared/dist/
+public/
 .vite/
 coverage/
 *.tsbuildinfo

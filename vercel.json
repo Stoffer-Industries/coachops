@@ -1,0 +1,43 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "public",
+  "installCommand": "npm install",
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/health",
+      "destination": "/api/server"
+    },
+    {
+      "source": "/ready",
+      "destination": "/api/server"
+    },
+    {
+      "source": "/roster",
+      "destination": "/api/server"
+    },
+    {
+      "source": "/reviews/:path*",
+      "destination": "/api/server"
+    },
+    {
+      "source": "/audit",
+      "destination": "/api/server"
+    },
+    {
+      "source": "/demo/:path*",
+      "destination": "/api/server"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "functions": {
+    "api/server.js": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  }
+}
