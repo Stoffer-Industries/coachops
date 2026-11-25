@@ -157,7 +157,7 @@ export async function buildReadiness(version: string): Promise<AgentReadiness> {
   const onSprite = isRunningOnSprite();
 
   const [openrouter, resend] = await Promise.all([
-    probeConnector("openrouter", openRouterConnectionId(), "models"),
+    probeConnector("openrouter", openRouterConnectionId(), "v1/models"),
     probeConnector("resend", resendConnectionId(), "domains")
   ]);
 

@@ -25,21 +25,39 @@ sprite create --skip-console -o quinn-stoffer coachops
 sprite use -o quinn-stoffer coachops
 ```
 
-## 3. Connectors (dashboard)
+## 3. Connectors
+
+### OpenRouter (managed)
+
+Provisioned for this org (example already used in Hacksgiving setup):
+
+```bash
+cd /tmp  # avoid workspace .sprite path prefixing
+sprite api -o quinn-stoffer /v1/oauth/connections/provision -- \
+  -X POST -H 'Content-Type: application/json' -d '{"provider":"openrouter"}'
+sprite api -o quinn-stoffer /v1/oauth/connections/<id> -- \
+  -X PUT -H 'Content-Type: application/json' \
+  -d '{"access_policy":{"name_prefix":"coachops"}}'
+```
+
+If chat completions return `credits_exhausted`, add prepaid credits at  
+https://fly.io/dashboard/quinn-stoffer/sprites/connectors/<id>
+
+Redeploy the service with the connection id:
+
+```bash
+COACHOPS_OPENROUTER_CONNECTION_ID=<id> ./scripts/sprite-deploy.sh
+```
+
+### Resend (outbound demo email)
 
 In [Fly dashboard](https://fly.io/dashboard) → **quinn-stoffer** → **Connectors**:
 
-1. **OpenRouter** — enable managed or BYOK; grant access to Sprites with name prefix `coachops`.
-2. **Resend** — add with your Resend API key; grant the same Sprite access; restrict to email send paths if available.
+1. Add **Resend** with your API key.
+2. Grant access to Sprites with name prefix `coachops`.
+3. Redeploy with `COACHOPS_RESEND_CONNECTION_ID=<id>`.
 
-Copy each connection id into Sprite environment (not into git):
-
-```bash
-sprite exec -o quinn-stoffer -s coachops -- bash -lc \
-  'echo export COACHOPS_OPENROUTER_CONNECTION_ID=conn_xxx >> ~/.coachops.env'
-```
-
-Or set via your preferred Sprite secret mechanism. The agent only stores **connection ids**.
+The agent only stores **connection ids**, never provider credentials.
 
 ## 4. Deploy agent code
 
