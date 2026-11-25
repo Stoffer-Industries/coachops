@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.coachops/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+dashboard/dist/
+agent/dist/
+packages/shared/dist/
+public/
+.vite/
+coverage/
+*.tsbuildinfo
+.sprite

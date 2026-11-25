@@ -1,0 +1,27 @@
+{
+  "name": "coachops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CoachOps — personal trainer roster operations agent for Fly.io Hacksgiving",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "agent",
+    "dashboard"
+  ],
+  "scripts": {
+    "build": "npm run build -w @coachops/shared && npm run build -w @coachops/agent && npm run build:dashboard:production",
+    "build:dashboard:production": "VITE_AGENT_URL=https://coachops-b6wno.sprites.app npm run build -w @coachops/dashboard && rm -rf public && mkdir -p public && cp -r dashboard/dist/* public/",
+    "test": "npm run test -w @coachops/shared && npm run test -w @coachops/agent",
+    "dev:agent": "npm run dev -w @coachops/agent",
+    "dev:dashboard": "npm run dev -w @coachops/dashboard",
+    "dev:dashboard:sprite": "COACHOPS_AGENT_URL=https://coachops-b6wno.sprites.app npm run dev -w @coachops/dashboard",
+    "start:agent": "npm run start -w @coachops/agent",
+    "review": "npm run review -w @coachops/agent",
+    "ready": "npm run ready -w @coachops/agent",
+    "reset-demo": "npm run reset-demo -w @coachops/agent"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
